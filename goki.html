@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ゴキブリサバイバル - あなたはゴキブリです。</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background-color: #1a1612;
+            color: #f3ede4;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+        /* カスタムボタンスタイル（立体感・バブルエフェクト） */
+        .game-btn {
+            background: linear-gradient(180deg, #ff7b00 0%, #d95300 100%);
+            border: 3px solid #ffe0b2;
+            box-shadow: 0 6px 0 #802b00, 0 10px 20px rgba(0, 0, 0, 0.5);
+            transition: all 0.1s ease;
+            cursor: pointer;
+        }
+        .game-btn:hover {
+            filter: brightness(1.08);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 0 #802b00, 0 12px 24px rgba(0, 0, 0, 0.6);
+        }
+        .game-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #802b00, 0 4px 10px rgba(0, 0, 0, 0.4);
+        }
+        .dash-btn {
+            background: linear-gradient(180deg, #00c6ff 0%, #0072ff 100%);
+            border: 2px solid #b3e5fc;
+            box-shadow: 0 4px 0 #004499;
+        }
+        .dash-btn:active:not(:disabled) {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #004499;
+        }
+        .dash-btn:disabled {
+            background: #4a5568;
+            border-color: #718096;
+            box-shadow: 0 2px 0 #2d3748;
+            opacity: 0.6;
+        }
+        @keyframes pulseDanger {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .animate-pulse-fast {
+            animation: pulseDanger 0.8s infinite;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body class="bg-stone-900">
+
+    <!-- ヘッダー（スコア・ステータス・ミュート切り替え） -->
+    <header class="w-full bg-stone-950/90 border-b-2 border-amber-900/60 px-3 py-2 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3 sm:space-x-6">
+            <div>
+                <span class="text-xs text-amber-400/80 block font-bold">SCORE</span>
+                <span id="scoreDisplay" class="text-xl sm:text-2xl font-black text-amber-300 tracking-wider">0</span>
+            </div>
+            <div>
+                <span class="text-xs text-stone-400 block font-bold">回避数</span>
+                <span id="dodgedDisplay" class="text-base sm:text-lg font-bold text-emerald-400">0足</span>
+            </div>
+            <div>
+                <span class="text-xs text-stone-400 block font-bold">生存時間</span>
+                <span id="timeDisplay" class="text-base sm:text-lg font-bold text-sky-300">0.0s</span>
+            </div>
+            <div class="hidden sm:block">
+                <span class="text-xs text-rose-400/80 block font-bold">危険度 (同時スリッパ)</span>
+                <span id="dangerDisplay" class="text-base sm:text-lg font-bold text-rose-400">Lv.1</span>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <!-- スタミナゲージ -->
+            <div class="flex flex-col items-end mr-2">
+                <span class="text-[10px] sm:text-xs font-bold text-sky-300">ダッシュ気力</span>
+                <div class="w-20 sm:w-28 h-3 bg-stone-800 rounded-full overflow-hidden border border-stone-600">
+                    <div id="staminaBar" class="h-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-all duration-75" style="width: 100%;"></div>
+                </div>
+            </div>
+            <!-- ミュートボタン -->
+            <button id="muteBtn" class="p-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-600 text-amber-200 transition" title="音声オン/オフ">
+                <span id="muteIcon" class="text-lg leading-none">🔊</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- メインゲームエリア（部屋の箱ステージ） -->
+    <main id="gameContainer" class="relative flex-1 w-full overflow-hidden flex items-center justify-center p-2 sm:p-4 bg-stone-950">
+        <!-- 部屋の枠線とキャンバス -->
+        <div id="roomWrapper" class="relative w-full h-full max-w-5xl max-h-full rounded-2xl overflow-hidden border-4 sm:border-8 border-amber-950 shadow-[0_0_40px_rgba(0,0,0,0.9)] bg-[#c89d6c]">
+            <canvas id="gameCanvas"></canvas>
+
+            <!-- スタート画面オーバーレイ -->
+            <div id="startScreen" class="absolute inset-0 bg-stone-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-30">
+                <div class="max-w-md w-full bg-stone-900/95 border-2 border-amber-700/70 rounded-3xl p-6 sm:p-8 shadow-2xl">
+                    <!-- ゴキブリSVGアイコン -->
+                    <div class="w-20 h-20 mx-auto mb-3 bg-amber-950/60 rounded-full flex items-center justify-center border-2 border-amber-600/50 animate-pulse-fast">
+                        <svg viewBox="0 0 100 100" class="w-14 h-14">
+                            <!-- 触角 -->
+                            <path d="M42 28 Q 25 10 15 5" stroke="#3e1f0d" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                            <path d="M58 28 Q 75 10 85 5" stroke="#3e1f0d" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                            <!-- 脚 -->
+                            <path d="M35 45 L15 35 M33 55 L12 58 M36 68 L18 82" stroke="#3e1f0d" stroke-width="3.5" stroke-linecap="round"/>
+                            <path d="M65 45 L85 35 M67 55 L88 58 M64 68 L82 82" stroke="#3e1f0d" stroke-width="3.5" stroke-linecap="round"/>
+                            <!-- 胴体 -->
+                            <ellipse cx="50" cy="58" rx="18" ry="26" fill="#4a220b"/>
+                            <ellipse cx="50" cy="58" rx="13" ry="21" fill="#632f11"/>
+                            <!-- 頭部 -->
+                            <circle cx="50" cy="31" r="9" fill="#2b1204"/>
+                            <!-- 光沢 -->
+                            <ellipse cx="45" cy="52" rx="4" ry="12" fill="#8f4a22" opacity="0.6"/>
+                        </svg>
+                    </div>
+
+                    <div class="inline-block px-3 py-1 rounded-full bg-rose-950/80 border border-rose-500/50 text-rose-300 text-xs font-bold mb-3">
+                        人間との仁義なき生存競争
+                    </div>
+
+                    <h1 class="text-2xl sm:text-3xl font-black text-amber-100 leading-snug mb-3">
+                        あなたはゴキブリです。<br>
+                        <span class="text-amber-400">生き残ってください。</span>
+                    </h1>
+
+                    <p class="text-xs sm:text-sm text-stone-300 mb-6 leading-relaxed">
+                        人間の巨大なスリッパが容赦なく降り注ぎます！<br>
+                        赤い危険予測エリアから素早く逃げ回り、<br>
+                        華麗なカサカサステップで高スコアを目指しましょう。
+                    </p>
+
+                    <div class="bg-stone-950/70 rounded-xl p-3 mb-6 text-left text-xs text-stone-300 space-y-1.5 border border-stone-800">
+                        <div class="flex items-center gap-2">
+                            <span class="px-1.5 py-0.5 bg-stone-800 rounded text-amber-300 font-bold">移動</span>
+                            <span>WASD / 矢印キー / マウス追従 / 画面ドラッグ</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-1.5 py-0.5 bg-sky-900 rounded text-sky-300 font-bold">ダッシュ</span>
+                            <span>Space / Shift / 右クリック / 画面下ボタン</span>
+                        </div>
+                    </div>
+
+                    <button id="startBtn" class="game-btn w-full py-3.5 px-6 rounded-2xl text-white font-black text-lg sm:text-xl tracking-wider">
+                        カサカサ開始（スタート）
+                    </button>
+                </div>
+            </div>
+
+            <!-- ゲームオーバー画面オーバーレイ -->
+            <div id="gameOverScreen" class="hidden absolute inset-0 bg-stone-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-30">
+                <div class="max-w-md w-full bg-stone-900/95 border-2 border-rose-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl">
+                    <div class="text-4xl mb-2">💥👟</div>
+                    <h2 class="text-3xl sm:text-4xl font-black text-rose-500 mb-1 tracking-tight">
+                        ペチャンコ！
+                    </h2>
+                    <p class="text-sm text-stone-300 mb-5">人間のスリッパに叩き潰されてしまった…</p>
+
+                    <div class="grid grid-cols-3 gap-2 sm:gap-3 bg-stone-950/80 p-4 rounded-2xl border border-stone-800 mb-6">
+                        <div class="flex flex-col">
+                            <span class="text-[11px] text-stone-400 font-bold">最終スコア</span>
+                            <span id="finalScore" class="text-xl sm:text-2xl font-black text-amber-400">0</span>
+                        </div>
+                        <div class="flex flex-col border-x border-stone-800">
+                            <span class="text-[11px] text-stone-400 font-bold">回避スリッパ</span>
+                            <span id="finalDodged" class="text-xl sm:text-2xl font-black text-emerald-400">0足</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[11px] text-stone-400 font-bold">生存時間</span>
+                            <span id="finalTime" class="text-xl sm:text-2xl font-black text-sky-400">0.0s</span>
+                        </div>
+                    </div>
+
+                    <div id="rankComment" class="text-sm font-bold text-amber-200 bg-amber-950/50 border border-amber-800/50 rounded-xl py-2 px-3 mb-6">
+                        称号：台所の見習いゴキブリ
+                    </div>
+
+                    <button id="retryBtn" class="game-btn w-full py-3.5 px-6 rounded-2xl text-white font-black text-lg sm:text-xl tracking-wider">
+                        もう一匹這い出す（リトライ）
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- フッターコントロールバー（スマホ・マウス操作用ダッシュボタン＆操作ガイド） -->
+    <footer class="w-full bg-stone-950 border-t border-stone-800 px-4 py-2.5 flex items-center justify-between z-20 shrink-0">
+        <div class="text-xs text-stone-400 hidden sm:block">
+            💡 ヒント：スリッパが落ちた瞬間に近くにいると「ギリギリ回避ボーナス」が入ります！
+        </div>
+        <div class="text-xs text-stone-400 sm:hidden">
+            指でドラッグ移動 / ボタンで急加速
+        </div>
+        <button id="dashBtn" class="dash-btn px-5 py-2 rounded-xl text-white font-black text-sm tracking-wide flex items-center gap-2 ml-auto">
+            <span>⚡ カサカサダッシュ</span>
+            <span class="text-[10px] bg-black/30 px-1.5 py-0.5 rounded hidden sm:inline">SPACE</span>
+        </button>
+    </footer>
+
+    <script>
+        /**
+         * サウンドエンジン (Web Audio API)
+         * 外部ファイルを使わず、ブラウザ内蔵のシンセサイザーで効果音を生成します。
+         */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.lastScuttleTime = 0;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            // カサカサ音（移動時の微細な足音）
+            playScuttle(isDashing = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const interval = isDashing ? 0.045 : 0.08;
+                if (now - this.lastScuttleTime < interval) return;
+                this.lastScuttleTime = now;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                const baseFreq = isDashing ? 520 : 340;
+                osc.frequency.setValueAtTime(baseFreq + Math.random() * 140, now);
+                osc.frequency.exponentialRampToValueAtTime(120, now + 0.03);
+
+                gain.gain.setValueAtTime(isDashing ? 0.06 : 0.03, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.035);
+            }
+
+            // ダッシュ発動音
+            playDash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(900, now + 0.15);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.17);
+            }
+
+            // スリッパ警告音（出現時）
+            playWarning() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(660, now);
+                osc.frequency.setValueAtTime(880, now + 0.06);
+
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            // スリッパ叩きつけ衝撃音（重低音＋ノイズ風）
+            playSlap() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // 低音インパクト
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(32, now + 0.22);
+
+                gain.gain.setValueAtTime(0.32, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+
+                // パチン！という破裂ノイズ
+                const bufferSize = this.ctx.sampleRate * 0.12;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.28, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+                noise.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+
+            // 回避スコア獲得音
+            playScore(isCloseCall = false) {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                if (isCloseCall) {
+                    osc.frequency.setValueAtTime(880, now);
+                    osc.frequency.setValueAtTime(1320, now + 0.06);
+                } else {
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(900, now + 0.08);
+                }
+                gain.gain.setValueAtTime(0.07, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.13);
+            }
+
+            // ゲームオーバー音（潰された音）
+            playSquash() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.linearRampToValueAtTime(55, now + 0.45);
+
+                gain.gain.setValueAtTime(0.35, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+        }
+
+        /**
+         * メインゲームクラス
+         */
+        class CockroachGame {
+            constructor() {
+                this.canvas = document.getElementById('gameCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.sound = new SoundEngine();
+
+                // UI要素
+                this.scoreEl = document.getElementById('scoreDisplay');
+                this.dodgedEl = document.getElementById('dodgedDisplay');
+                this.timeEl = document.getElementById('timeDisplay');
+                this.dangerEl = document.getElementById('dangerDisplay');
+                this.staminaBar = document.getElementById('staminaBar');
+                this.startScreen = document.getElementById('startScreen');
+                this.gameOverScreen = document.getElementById('gameOverScreen');
+                this.dashBtn = document.getElementById('dashBtn');
+
+                // ゲーム状態
+                this.state = 'START'; // START, PLAYING, GAMEOVER
+                this.width = 800;
+                this.height = 600;
+
+                // プレイヤー（ゴキブリ）設定
+                this.player = {
+                    x: 400,
+                    y: 300,
+                    radius: 15,
+                    angle: -Math.PI / 2,
+                    baseSpeed: 260,
+                    dashSpeed: 540,
+                    stamina: 100,
+                    maxStamina: 100,
+                    isDashing: false,
+                    dashTimer: 0,
+                    legPhase: 0,
+                    antennaPhase: 0,
+                    isMoving: false
+                };
+
+                // スコア・進行パラメータ
+                this.score = 0;
+                this.dodgedCount = 0;
+                this.survivalTime = 0;
+                this.spawnTimer = 0;
+
+                // エンティティ配列
+                this.slippers = [];
+                this.obstacles = []; // 部屋の家具・障害物（ゴキブリの隠れ家ではなく物理障害物・装飾）
+                this.particles = [];
+                this.floatingTexts = [];
+                this.crumbs = []; // 床のパンくず（ボーナスアイテム）
+
+                // 画面揺れエフェクト
+                this.shakeTime = 0;
+                this.shakeIntensity = 0;
+
+                // 入力管理
+                this.keys = {};
+                this.pointer = {
+                    active: false,
+                    x: 0,
+                    y: 0,
+                    isTouch: false
+                };
+
+                this.lastTimestamp = 0;
+
+                this.bindEvents();
+                this.resizeCanvas();
+                this.generateRoomDecor();
+            }
+
+            // キャンバスのレスポンシブサイズ調整
+            resizeCanvas() {
+                const wrapper = document.getElementById('roomWrapper');
+                const rect = wrapper.getBoundingClientRect();
+                const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+                const prevW = this.width || rect.width;
+                const prevH = this.height || rect.height;
+
+                this.width = rect.width;
+                this.height = rect.height;
+
+                this.canvas.width = this.width * dpr;
+                this.canvas.height = this.height * dpr;
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                // リサイズ時にプレイヤーが画面外に出ないよう補正
+                if (this.state === 'PLAYING') {
+                    this.player.x = Math.min(Math.max(this.player.x * (this.width / prevW), 24), this.width - 24);
+                    this.player.y = Math.min(Math.max(this.player.y * (this.height / prevH), 24), this.height - 24);
+                } else {
+                    this.player.x = this.width / 2;
+                    this.player.y = this.height / 2;
+                }
+            }
+
+            // 部屋の家具（壁際のテーブルの脚やラグなど）を生成
+            generateRoomDecor() {
+                this.obstacles = [];
+                const margin = 55;
+                // 4隅付近にテーブルの脚や観葉植物の鉢などの障害物を配置（中央は広く空ける）
+                const candidates = [
+                    { x: this.width * 0.22, y: this.height * 0.24, r: 22, type: 'tableLeg', label: '机の脚' },
+                    { x: this.width * 0.78, y: this.height * 0.24, r: 22, type: 'tableLeg', label: '机の脚' },
+                    { x: this.width * 0.22, y: this.height * 0.76, r: 22, type: 'tableLeg', label: '机の脚' },
+                    { x: this.width * 0.78, y: this.height * 0.76, r: 22, type: 'tableLeg', label: '机の脚' },
+                    { x: this.width * 0.5, y: this.height * 0.14, r: 26, type: 'plant', label: '鉢植え' }
+                ];
+
+                // 画面が狭いモバイルでは障害物を減らして遊びやすくする
+                if (this.width < 520) {
+                    this.obstacles = [candidates[0], candidates[3]];
+                } else {
+                    this.obstacles = candidates;
+                }
+            }
+
+            // イベントリスナー登録
+            bindEvents() {
+                window.addEventListener('resize', () => {
+                    this.resizeCanvas();
+                    if (this.state !== 'PLAYING') {
+                        this.generateRoomDecor();
+                    }
+                });
+
+                // キーボード操作
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    if ((e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.state === 'PLAYING') {
+                        e.preventDefault();
+                        this.triggerDash();
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+
+                // マウス・タッチ操作（キャンバス内）
+                const updatePointerPos = (clientX, clientY) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    this.pointer.x = clientX - rect.left;
+                    this.pointer.y = clientY - rect.top;
+                };
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    if (this.state !== 'PLAYING') return;
+                    if (e.button === 2) {
+                        this.triggerDash();
+                        return;
+                    }
+                    this.pointer.active = true;
+                    this.pointer.isTouch = false;
+                    updatePointerPos(e.clientX, e.clientY);
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (this.pointer.active && !this.pointer.isTouch) {
+                        updatePointerPos(e.clientX, e.clientY);
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    if (!this.pointer.isTouch) {
+                        this.pointer.active = false;
+                    }
+                });
+
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+                // タッチイベント
+                this.canvas.addEventListener('touchstart', (e) => {
+                    if (this.state !== 'PLAYING') return;
+                    e.preventDefault();
+                    if (e.touches.length > 0) {
+                        this.pointer.active = true;
+                        this.pointer.isTouch = true;
+                        updatePointerPos(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                }, { passive: false });
+
+                this.canvas.addEventListener('touchmove', (e) => {
+                    if (this.state !== 'PLAYING') return;
+                    e.preventDefault();
+                    if (e.touches.length > 0) {
+                        updatePointerPos(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                }, { passive: false });
+
+                this.canvas.addEventListener('touchend', (e) => {
+                    if (e.touches.length === 0) {
+                        this.pointer.active = false;
+                    }
+                });
+
+                // UIボタン
+                document.getElementById('startBtn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.startGame();
+                });
+
+                document.getElementById('retryBtn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.startGame();
+                });
+
+                this.dashBtn.addEventListener('click', () => {
+                    if (this.state === 'PLAYING') {
+                        this.triggerDash();
+                    }
+                });
+
+                document.getElementById('muteBtn').addEventListener('click', () => {
+                    this.sound.init();
+                    const muted = this.sound.toggleMute();
+                    document.getElementById('muteIcon').textContent = muted ? '🔇' : '🔊';
+                });
+            }
+
+            // ゲーム開始・リセット
+            startGame() {
+                this.resizeCanvas();
+                this.generateRoomDecor();
+
+                this.state = 'PLAYING';
+                this.score = 0;
+                this.dodgedCount = 0;
+                this.survivalTime = 0;
+                this.spawnTimer = 0.6;
+
+                this.player.x = this.width / 2;
+                this.player.y = this.height / 2;
+                this.player.angle = -Math.PI / 2;
+                this.player.stamina = 100;
+                this.player.isDashing = false;
+                this.player.dashTimer = 0;
+
+                this.slippers = [];
+                this.particles = [];
+                this.floatingTexts = [];
+                this.crumbs = [];
+                this.shakeTime = 0;
+
+                // 最初のパンくず（ボーナス餌）を1つ配置
+                this.spawnCrumb();
+
+                this.startScreen.classList.add('hidden');
+                this.gameOverScreen.classList.add('hidden');
+                this.updateHUD();
+            }
+
+            // ダッシュ発動
+            triggerDash() {
+                if (this.player.isDashing || this.player.stamina < 30) return;
+                this.player.isDashing = true;
+                this.player.dashTimer = 0.24; // 0.24秒間超高速移動
+                this.player.stamina = Math.max(0, this.player.stamina - 35);
+                this.sound.playDash();
+
+                // ダッシュ開始時の砂埃パーティクル
+                for (let i = 0; i < 8; i++) {
+                    const ang = this.player.angle + Math.PI + (Math.random() - 0.5) * 1.2;
+                    const spd = 60 + Math.random() * 90;
+                    this.particles.push({
+                        x: this.player.x,
+                        y: this.player.y,
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd,
+                        life: 0.3,
+                        maxLife: 0.3,
+                        size: 3 + Math.random() * 3,
+                        color: '#e0f2fe'
+                    });
+                }
+            }
+
+            // スリッパ攻撃の生成
+            spawnSlipper() {
+                // 難易度スケーリング（生存時間と回避数に応じて強化）
+                const difficulty = Math.min(10, 1 + Math.floor(this.survivalTime / 8) + Math.floor(this.dodgedCount / 10));
+                const warnDuration = Math.max(0.58, 1.35 - difficulty * 0.075); // 徐々に叩きつけが速くなる
+                const radius = Math.min(82, 54 + difficulty * 2.2); // スリッパの当たり判定も少し大きくなる
+
+                // プレイヤーの進行方向を少し先読みして狙うパターンと、ランダム位置パターンの混合
+                let targetX, targetY;
+                const aimPlayer = Math.random() < 0.65;
+
+                if (aimPlayer) {
+                    const lead = (Math.random() - 0.3) * 90;
+                    targetX = this.player.x + Math.cos(this.player.angle) * lead + (Math.random() - 0.5) * 60;
+                    targetY = this.player.y + Math.sin(this.player.angle) * lead + (Math.random() - 0.5) * 60;
+                } else {
+                    targetX = radius + Math.random() * (this.width - radius * 2);
+                    targetY = radius + Math.random() * (this.height - radius * 2);
+                }
+
+                // 部屋の壁内にクランプ
+                targetX = Math.max(radius + 8, Math.min(this.width - radius - 8, targetX));
+                targetY = Math.max(radius + 8, Math.min(this.height - radius - 8, targetY));
+
+                // スリッパの向き（人間が部屋の端から叩くような角度）
+                const angle = Math.atan2(targetY - this.height / 2, targetX - this.width / 2) + (Math.random() - 0.5) * 0.8;
+
+                // スリッパのカラーバリエーション
+                const colors = [
+                    { main: '#e11d48', strap: '#be123c' }, // 赤スリッパ
+                    { main: '#2563eb', strap: '#1d4ed8' }, // 青スリッパ
+                    { main: '#16a34a', strap: '#15803d' }, // 緑スリッパ
+                    { main: '#d97706', strap: '#b45309' }, // 茶スリッパ
+                    { main: '#7c3aed', strap: '#6d28d9' }  // 紫スリッパ
+                ];
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                this.slippers.push({
+                    x: targetX,
+                    y: targetY,
+                    radius: radius,
+                    angle: angle,
+                    timer: 0,
+                    warnDuration: warnDuration,
+                    slammed: false,
+                    slammedTimer: 0,
+                    slammedDuration: 0.45, // 叩きつけ後、床に残る時間
+                    color: color,
+                    scored: false
+                });
+
+                this.sound.playWarning();
+            }
+
+            // ボーナス餌（パンくず）の生成
+            spawnCrumb() {
+                if (this.crumbs.length >= 2) return;
+                const margin = 45;
+                const x = margin + Math.random() * (this.width - margin * 2);
+                const y = margin + Math.random() * (this.height - margin * 2);
+                this.crumbs.push({
+                    x,
+                    y,
+                    radius: 8,
+                    bobPhase: Math.random() * Math.PI * 2
+                });
+            }
+
+            // フローティングテキスト追加
+            addFloatingText(x, y, text, color = '#fde047') {
+                this.floatingTexts.push({
+                    x,
+                    y,
+                    text,
+                    color,
+                    life: 0.9,
+                    maxLife: 0.9
+                });
+            }
+
+            // 衝撃パーティクル追加
+            addImpactParticles(x, y, radius) {
+                for (let i = 0; i < 16; i++) {
+                    const ang = (Math.PI * 2 * i) / 16 + Math.random() * 0.2;
+                    const spd = 80 + Math.random() * 140;
+                    this.particles.push({
+                        x: x + Math.cos(ang) * (radius * 0.5),
+                        y: y + Math.sin(ang) * (radius * 0.5),
+                        vx: Math.cos(ang) * spd,
+                        vy: Math.sin(ang) * spd,
+                        life: 0.35 + Math.random() * 0.15,
+                        maxLife: 0.5,
+                        size: 3 + Math.random() * 4,
+                        color: '#fffbeb'
+                    });
+                }
+            }
+
+            // フレーム更新処理
+            update(dt) {
+                if (this.state !== 'PLAYING') {
+                    // タイトル画面でもゴキブリの触角だけ動かす
+                    this.player.antennaPhase += dt * 6;
+                    return;
+                }
+
+                this.survivalTime += dt;
+                // 時間経過でも少しずつスコア加算
+                this.score += dt * 15;
+
+                // 画面揺れの減衰
+                if (this.shakeTime > 0) {
+                    this.shakeTime = Math.max(0, this.shakeTime - dt);
+                }
+
+                // 1. プレイヤーの移動入力計算
+                let moveX = 0;
+                let moveY = 0;
+
+                if (this.keys['ArrowUp'] || this.keys['KeyW']) moveY -= 1;
+                if (this.keys['ArrowDown'] || this.keys['KeyS']) moveY += 1;
+                if (this.keys['ArrowLeft'] || this.keys['KeyA']) moveX -= 1;
+                if (this.keys['ArrowRight'] || this.keys['KeyD']) moveX += 1;
+
+                // キーボード入力がない場合、マウス/タッチポインター追従を適用
+                if (moveX === 0 && moveY === 0 && this.pointer.active) {
+                    const dx = this.pointer.x - this.player.x;
+                    const dy = this.pointer.y - this.player.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist > 8) {
+                        moveX = dx / dist;
+                        moveY = dy / dist;
+                    }
+                } else if (moveX !== 0 || moveY !== 0) {
+                    const len = Math.hypot(moveX, moveY);
+                    moveX /= len;
+                    moveY /= len;
+                }
+
+                // ダッシュ状態とスタミナ回復
+                if (this.player.isDashing) {
+                    this.player.dashTimer -= dt;
+                    if (this.player.dashTimer <= 0) {
+                        this.player.isDashing = false;
+                    }
+                } else {
+                    this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + dt * 26);
+                }
+
+                const currentSpeed = this.player.isDashing ? this.player.dashSpeed : this.player.baseSpeed;
+                this.player.isMoving = (moveX !== 0 || moveY !== 0);
+
+                if (this.player.isMoving) {
+                    // ゴキブリらしい俊敏な旋回
+                    const targetAngle = Math.atan2(moveY, moveX);
+                    let diff = targetAngle - this.player.angle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    this.player.angle += diff * Math.min(1, dt * 22);
+
+                    this.player.x += moveX * currentSpeed * dt;
+                    this.player.y += moveY * currentSpeed * dt;
+
+                    // 脚のワサワサアニメーション
+                    this.player.legPhase += dt * (this.player.isDashing ? 55 : 32);
+                    this.sound.playScuttle(this.player.isDashing);
+                } else if (this.player.isDashing) {
+                    // 入力なしダッシュ時は向いている方向へ突進
+                    this.player.x += Math.cos(this.player.angle) * currentSpeed * dt;
+                    this.player.y += Math.sin(this.player.angle) * currentSpeed * dt;
+                    this.player.legPhase += dt * 55;
+                    this.sound.playScuttle(true);
+                }
+
+                this.player.antennaPhase += dt * 12;
+
+                // 家具（障害物）との押し戻し判定
+                for (const obs of this.obstacles) {
+                    const dx = this.player.x - obs.x;
+                    const dy = this.player.y - obs.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minDist = this.player.radius + obs.r;
+                    if (dist < minDist && dist > 0) {
+                        const overlap = minDist - dist;
+                        this.player.x += (dx / dist) * overlap;
+                        this.player.y += (dy / dist) * overlap;
+                    }
+                }
+
+                // 部屋の壁（境界）との衝突制限
+                const wallPad = this.player.radius + 6;
+                this.player.x = Math.max(wallPad, Math.min(this.width - wallPad, this.player.x));
+                this.player.y = Math.max(wallPad, Math.min(this.height - wallPad, this.player.y));
+
+                // 2. パンくず（ボーナスアイテム）の取得判定
+                for (let i = this.crumbs.length - 1; i >= 0; i--) {
+                    const c = this.crumbs[i];
+                    c.bobPhase += dt * 5;
+                    const dist = Math.hypot(this.player.x - c.x, this.player.y - c.y);
+                    if (dist < this.player.radius + c.radius + 4) {
+                        this.score += 250;
+                        this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + 40);
+                        this.sound.playScore(true);
+                        this.addFloatingText(c.x, c.y - 10, '+250 パンくず！', '#4ade80');
+                        this.crumbs.splice(i, 1);
+                    }
+                }
+                if (Math.random() < dt * 0.25) {
+                    this.spawnCrumb();
+                }
+
+                // 3. スリッパの出現制御（時間経過とスコアでどんどん増える）
+                const difficulty = Math.min(12, 1 + Math.floor(this.survivalTime / 7) + Math.floor(this.dodgedCount / 8));
+                const maxConcurrent = Math.min(9, 1 + Math.floor(difficulty * 0.75));
+                const spawnInterval = Math.max(0.28, 1.35 - difficulty * 0.09);
+
+                this.spawnTimer -= dt;
+                if (this.spawnTimer <= 0 && this.slippers.length < maxConcurrent) {
+                    this.spawnSlipper();
+                    this.spawnTimer = spawnInterval * (0.75 + Math.random() * 0.5);
+                }
+
+                // 4. スリッパの更新と当たり判定
+                for (let i = this.slippers.length - 1; i >= 0; i--) {
+                    const s = this.slippers[i];
+
+                    if (!s.slammed) {
+                        s.timer += dt;
+                        // 警告時間終了 → スリッパ叩きつけ！
+                        if (s.timer >= s.warnDuration) {
+                            s.slammed = true;
+                            this.sound.playSlap();
+                            this.shakeTime = 0.16;
+                            this.shakeIntensity = 7;
+                            this.addImpactParticles(s.x, s.y, s.radius);
+
+                            // 叩きつけられた瞬間の当たり判定
+                            const dist = Math.hypot(this.player.x - s.x, this.player.y - s.y);
+                            if (dist < s.radius + this.player.radius * 0.65) {
+                                this.triggerGameOver();
+                                return;
+                            } else if (!s.scored) {
+                                // 回避成功！
+                                s.scored = true;
+                                this.dodgedCount++;
+                                const isCloseCall = dist < s.radius + 42;
+                                const bonus = isCloseCall ? 200 : 100;
+                                this.score += bonus;
+                                this.sound.playScore(isCloseCall);
+
+                                if (isCloseCall) {
+                                    this.addFloatingText(this.player.x, this.player.y - 22, `ギリギリ回避! +${bonus}`, '#38bdf8');
+                                } else {
+                                    this.addFloatingText(s.x, s.y - 15, `+${bonus}`, '#fde047');
+                                }
+                            }
+                        }
+                    } else {
+                        s.slammedTimer += dt;
+                        // 叩きつけ直後の余韻判定（ごく一瞬だけ判定を残す）
+                        if (s.slammedTimer < 0.08) {
+                            const dist = Math.hypot(this.player.x - s.x, this.player.y - s.y);
+                            if (dist < s.radius + this.player.radius * 0.55) {
+                                this.triggerGameOver();
+                                return;
+                            }
+                        }
+                        if (s.slammedTimer >= s.slammedDuration) {
+                            this.slippers.splice(i, 1);
+                        }
+                    }
+                }
+
+                // 5. パーティクル・テキスト更新
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.life -= dt;
+                    if (p.life <= 0) this.particles.splice(i, 1);
+                }
+
+                for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+                    const ft = this.floatingTexts[i];
+                    ft.y -= 35 * dt;
+                    ft.life -= dt;
+                    if (ft.life <= 0) this.floatingTexts.splice(i, 1);
+                }
+
+                this.updateHUD(difficulty);
+            }
+
+            // ゲームオーバー処理
+            triggerGameOver() {
+                this.state = 'GAMEOVER';
+                this.sound.playSquash();
+                this.shakeTime = 0.35;
+                this.shakeIntensity = 14;
+
+                const finalScoreVal = Math.floor(this.score);
+                document.getElementById('finalScore').textContent = finalScoreVal.toLocaleString();
+                document.getElementById('finalDodged').textContent = `${this.dodgedCount}足`;
+                document.getElementById('finalTime').textContent = `${this.survivalTime.toFixed(1)}s`;
+
+                // スコアに応じたユニークなゴキブリ称号
+                let rank = '称号：人間を舐めていた新米ゴキブリ';
+                if (finalScoreVal >= 8000) rank = '称号：伝説のブラック・ファントム（人間完全敗北）';
+                else if (finalScoreVal >= 5000) rank = '称号：音速の黒き閃光（スリッパ殺し）';
+                else if (finalScoreVal >= 2500) rank = '称号：台所のベテランサバイバー';
+                else if (finalScoreVal >= 1000) rank = '称号：そこそこ素早いカサカサ戦士';
+
+                document.getElementById('rankComment').textContent = rank;
+                this.gameOverScreen.classList.remove('hidden');
+            }
+
+            // ヘッダーUIの更新
+            updateHUD(difficulty = 1) {
+                this.scoreEl.textContent = Math.floor(this.score).toLocaleString();
+                this.dodgedEl.textContent = `${this.dodgedCount}足`;
+                this.timeEl.textContent = `${this.survivalTime.toFixed(1)}s`;
+                this.dangerEl.textContent = `Lv.${difficulty}`;
+
+                const staminaPct = Math.round((this.player.stamina / this.player.maxStamina) * 100);
+                this.staminaBar.style.width = `${staminaPct}%`;
+                this.dashBtn.disabled = this.player.stamina < 30 || this.player.isDashing;
+            }
+
+            // 描画処理
+            draw() {
+                const ctx = this.ctx;
+                ctx.save();
+
+                // 画面揺れ適用
+                if (this.shakeTime > 0) {
+                    const dx = (Math.random() - 0.5) * this.shakeIntensity;
+                    const dy = (Math.random() - 0.5) * this.shakeIntensity;
+                    ctx.translate(dx, dy);
+                }
+
+                // 1. 部屋のフローリング床を描画
+                this.drawFloor(ctx);
+
+                // 2. パンくず（ボーナス餌）の描画
+                this.drawCrumbs(ctx);
+
+                // 3. スリッパの「予測警告マーク・影」の描画（叩きつけ前）
+                for (const s of this.slippers) {
+                    if (!s.slammed) {
+                        this.drawSlipperWarning(ctx, s);
+                    }
+                }
+
+                // 4. プレイヤー（ゴキブリ）の描画
+                this.drawCockroach(ctx);
+
+                // 5. 叩きつけられたスリッパ本体の描画
+                for (const s of this.slippers) {
+                    if (s.slammed) {
+                        this.drawSlammedSlipper(ctx, s);
+                    }
+                }
+
+                // 6. 家具・障害物の描画（上から見下ろした天板や鉢植え）
+                this.drawObstacles(ctx);
+
+                // 7. パーティクル・フローティングスコア描画
+                this.drawParticlesAndText(ctx);
+
+                // 8. 部屋の四隅のビネット（箱の立体感）
+                this.drawRoomShadow(ctx);
+
+                ctx.restore();
+            }
+
+            // フローリング木目と目地の描画
+            drawFloor(ctx) {
+                ctx.fillStyle = '#c89b68';
+                ctx.fillRect(0, 0, this.width, this.height);
+
+                const plankHeight = 46;
+                const plankWidth = 180;
+                ctx.strokeStyle = 'rgba(92, 56, 24, 0.28)';
+                ctx.lineWidth = 1.5;
+
+                for (let y = 0; y < this.height; y += plankHeight) {
+                    const row = Math.floor(y / plankHeight);
+                    // 板ごとのわずかな色味の違い
+                    ctx.fillStyle = row % 2 === 0 ? 'rgba(255, 235, 205, 0.08)' : 'rgba(110, 65, 25, 0.06)';
+                    ctx.fillRect(0, y, this.width, plankHeight);
+
+                    // 横の目地
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(this.width, y);
+                    ctx.stroke();
+
+                    // 縦の継ぎ目（レンガ状にずらす）
+                    const offset = (row % 2) * (plankWidth / 2);
+                    for (let x = offset; x < this.width; x += plankWidth) {
+                        ctx.beginPath();
+                        ctx.moveTo(x, y);
+                        ctx.lineTo(x, y + plankHeight);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // パンくずの描画
+            drawCrumbs(ctx) {
+                for (const c of this.crumbs) {
+                    const pulse = 1 + Math.sin(c.bobPhase) * 0.15;
+                    ctx.save();
+                    ctx.translate(c.x, c.y);
+                    ctx.scale(pulse, pulse);
+
+                    // 光のオーラ
+                    ctx.fillStyle = 'rgba(253, 224, 71, 0.35)';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, c.radius + 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // パンくず本体
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.strokeStyle = '#78350f';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, c.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.restore();
+                }
+            }
+
+            // スリッパ落下予測エリア（危険ゾーン）の描画
+            drawSlipperWarning(ctx, s) {
+                const progress = Math.min(1, s.timer / s.warnDuration);
+                ctx.save();
+                ctx.translate(s.x, s.y);
+
+                // 外枠の危険円
+                ctx.fillStyle = `rgba(225, 29, 72, ${0.12 + progress * 0.22})`;
+                ctx.strokeStyle = `rgba(225, 29, 72, ${0.55 + progress * 0.45})`;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, s.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // 迫りくるスリッパの影（外側から中心へ収束する円）
+                const shadowRadius = s.radius * (1.8 - progress * 0.8);
+                ctx.fillStyle = `rgba(20, 10, 5, ${0.15 + progress * 0.35})`;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, shadowRadius * 1.15, shadowRadius * 0.65, s.angle, 0, Math.PI * 2);
+                ctx.fill();
+
+                // タイミングゲージ（中心から広がる赤い円）
+                ctx.fillStyle = 'rgba(244, 63, 94, 0.35)';
+                ctx.beginPath();
+                ctx.arc(0, 0, s.radius * progress, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 警告アイコン「！」
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '900 18px "M PLUS Rounded 1c", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('!', 0, 0);
+
+                ctx.restore();
+            }
+
+            // 叩きつけられたスリッパ本体の描画
+            drawSlammedSlipper(ctx, s) {
+                const alpha = 1 - Math.max(0, (s.slammedTimer - 0.25) / (s.slammedDuration - 0.25));
+                ctx.save();
+                ctx.translate(s.x, s.y);
+                ctx.rotate(s.angle);
+                ctx.globalAlpha = alpha;
+
+                // 衝撃波リング
+                if (s.slammedTimer < 0.2) {
+                    const waveR = s.radius * (1 + s.slammedTimer * 2.5);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${1 - s.slammedTimer * 5})`;
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, waveR, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // スリッパの底面影
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.beginPath();
+                ctx.ellipse(4, 6, s.radius * 1.18, s.radius * 0.66, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // スリッパ本体（小判型）
+                ctx.fillStyle = s.color.main;
+                ctx.strokeStyle = '#1c1917';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s.radius * 1.15, s.radius * 0.64, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // インソールのステッチ線
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, s.radius * 0.98, s.radius * 0.5, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // スリッパの甲バンド（ストラップ）
+                ctx.fillStyle = s.color.strap;
+                ctx.strokeStyle = '#1c1917';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.roundRect(-s.radius * 0.25, -s.radius * 0.62, s.radius * 0.65, s.radius * 1.24, 10);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            // 主人公（ゴキブリ）のアニメーション描画
+            drawCockroach(ctx) {
+                const p = this.player;
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.angle + Math.PI / 2); // 上向きを基準に回転
+
+                // 潰された場合はペチャンコ表現
+                if (this.state === 'GAMEOVER') {
+                    ctx.scale(1.5, 0.75);
+                }
+
+                // ダッシュ中の残像オーラ
+                if (p.isDashing) {
+                    ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 6, 16, 26, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 接地影
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx.beginPath();
+                ctx.ellipse(2, 4, 11, 17, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 6本の脚（カサカサ動くアニメーション）
+                ctx.strokeStyle = '#291205';
+                ctx.lineWidth = 2.4;
+                ctx.lineCap = 'round';
+                const legOffsets = [-6, 0, 7];
+                for (let i = 0; i < 3; i++) {
+                    const swing = p.isMoving || p.isDashing ? Math.sin(p.legPhase + i * 2.1) * 5 : 0;
+                    const yBase = legOffsets[i];
+
+                    // 左脚
+                    ctx.beginPath();
+                    ctx.moveTo(-7, yBase);
+                    ctx.lineTo(-15, yBase - 3 + swing);
+                    ctx.lineTo(-20, yBase + 4 + swing);
+                    ctx.stroke();
+
+                    // 右脚
+                    ctx.beginPath();
+                    ctx.moveTo(7, yBase);
+                    ctx.lineTo(15, yBase - 3 - swing);
+                    ctx.lineTo(20, yBase + 4 - swing);
+                    ctx.stroke();
+                }
+
+                // 2本の長い触角（常にピコピコ動く）
+                const antWaveL = Math.sin(p.antennaPhase) * 4;
+                const antWaveR = Math.cos(p.antennaPhase * 1.1) * 4;
+                ctx.strokeStyle = '#3b1908';
+                ctx.lineWidth = 1.6;
+
+                ctx.beginPath();
+                ctx.moveTo(-3, -15);
+                ctx.quadraticCurveTo(-12 + antWaveL, -28, -16 + antWaveL, -36);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(3, -15);
+                ctx.quadraticCurveTo(12 + antWaveR, -28, 16 + antWaveR, -36);
+                ctx.stroke();
+
+                // 胴体（ツヤのある茶褐色）
+                ctx.fillStyle = '#4a210a';
+                ctx.strokeStyle = '#1f0c03';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.ellipse(0, 2, 10.5, 16, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+
+                // 翅（はね）の合わせ目と光沢
+                ctx.fillStyle = '#6b3212';
+                ctx.beginPath();
+                ctx.ellipse(0, 3, 8, 13, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#3b1908';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, -6);
+                ctx.lineTo(0, 16);
+                ctx.stroke();
+
+                // テカリ（ハイライト）
+                ctx.fillStyle = 'rgba(255, 220, 190, 0.35)';
+                ctx.beginPath();
+                ctx.ellipse(-3, 0, 2.2, 8, -0.1, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 頭部（胸部シールド）
+                ctx.fillStyle = '#291205';
+                ctx.beginPath();
+                ctx.arc(0, -12, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            // 部屋の家具・障害物の描画
+            drawObstacles(ctx) {
+                for (const obs of this.obstacles) {
+                    ctx.save();
+                    ctx.translate(obs.x, obs.y);
+
+                    // 影
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                    ctx.beginPath();
+                    ctx.arc(4, 6, obs.r, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    if (obs.type === 'plant') {
+                        // 観葉植物の鉢
+                        ctx.fillStyle = '#9a3412';
+                        ctx.strokeStyle = '#431407';
+                        ctx.lineWidth = 2.5;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, obs.r, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // 葉っぱ
+                        ctx.fillStyle = '#15803d';
+                        for (let i = 0; i < 6; i++) {
+                            ctx.save();
+                            ctx.rotate((Math.PI / 3) * i);
+                            ctx.beginPath();
+                            ctx.ellipse(10, 0, 11, 5, 0, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.restore();
+                        }
+                    } else {
+                        // 木製テーブルの脚
+                        ctx.fillStyle = '#5c3a21';
+                        ctx.strokeStyle = '#2e1a0c';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, obs.r, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // 年輪風ハイライト
+                        ctx.strokeStyle = 'rgba(255, 225, 190, 0.2)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, obs.r * 0.65, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+
+                    ctx.restore();
+                }
+            }
+
+            // パーティクルとフローティングテキストの描画
+            drawParticlesAndText(ctx) {
+                for (const p of this.particles) {
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                for (const ft of this.floatingTexts) {
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, ft.life / ft.maxLife);
+                    ctx.font = '900 15px "M PLUS Rounded 1c", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.strokeStyle = '#1c1917';
+                    ctx.lineWidth = 3.5;
+                    ctx.strokeText(ft.text, ft.x, ft.y);
+                    ctx.fillStyle = ft.color;
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                    ctx.restore();
+                }
+            }
+
+            // 部屋の壁際の立体シャドウ
+            drawRoomShadow(ctx) {
+                const grad = ctx.createRadialGradient(
+                    this.width / 2, this.height / 2, Math.min(this.width, this.height) * 0.35,
+                    this.width / 2, this.height / 2, Math.max(this.width, this.height) * 0.72
+                );
+                grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                grad.addColorStop(1, 'rgba(28, 16, 8, 0.38)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, this.width, this.height);
+            }
+
+            // メインループ
+            loop(timestamp) {
+                if (!this.lastTimestamp) this.lastTimestamp = timestamp;
+                const dt = Math.min(0.05, (timestamp - this.lastTimestamp) / 1000);
+                this.lastTimestamp = timestamp;
+
+                this.update(dt);
+                this.draw();
+
+                requestAnimationFrame((ts) => this.loop(ts));
+            }
+        }
+
+        // ウィンドウ読み込み完了時にゲーム起動
+        window.onload = function () {
+            const game = new CockroachGame();
+            requestAnimationFrame((ts) => game.loop(ts));
+        };
+    </script>
+</body>
+</html>
